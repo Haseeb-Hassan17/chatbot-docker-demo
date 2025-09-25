@@ -1,54 +1,48 @@
-import os
-from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.output_parsers import StrOutputParser
+import logging
+import os # Import os module to access environment variables
+from openai import OpenAI
 
-# Load environment variables
-load_dotenv()
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class SimpleChatbot:
     def __init__(self):
-        # Initialize the LLM
-        self.llm = ChatOpenAI(
-            model_name=os.getenv("MODEL_NAME", "gpt-3.5-turbo"),
-            temperature=float(os.getenv("TEMPERATURE", "0.7")),
-            openai_api_key=os.getenv("OPENAI_API_KEY")
-        )
-        
-        # Create prompt template
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a helpful AI assistant."),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{input}")
-        ])
-        
-        # Create the chain
-        self.chain = self.prompt | self.llm | StrOutputParser()
-        
-        # Chat history
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("OPENAI_API_KEY environment variable not set.")
+            raise ValueError("OPENAI_API_KEY environment variable not set.")
+        self.client = OpenAI(api_key=api_key) # Pass API key to OpenAI client
         self.chat_history = []
+        logger.info("Chatbot initialized.")
     
     def chat(self, user_input):
+        logger.info(f"User input received: {user_input}")
         try:
-            response = self.chain.invoke({
-                "input": user_input,
-                "chat_history": self.chat_history
-            })
+            messages = [{"role": "user", "content": user_input}]
+            if self.chat_history:
+                messages = self.chat_history + messages
+
+            response = self.client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=messages
+            )
             
-            # Update history
+            bot_response_text = response.choices[0].message.content
+            
             self.chat_history.extend([
-                HumanMessage(content=user_input),
-                AIMessage(content=response)
+                {"role": "user", "content": user_input},
+                {"role": "assistant", "content": bot_response_text}
             ])
             
-            return response
+            logger.info(f"Bot response generated: {bot_response_text}")
+            return bot_response_text
         except Exception as e:
+            logger.error(f"Error during chat processing: {e}")
             return f"Error: {str(e)}"
     
     def clear_history(self):
         self.chat_history = []
+        logger.info("Chat history cleared.")
 
 def main():
     print("🤖 Simple Chatbot (type 'quit' to exit)")
